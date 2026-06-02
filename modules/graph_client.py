@@ -265,7 +265,36 @@ def poll_device_flow(flow: dict) -> str | None:
     raise RuntimeError(err_msg)
 
 
-# ── Email del usuario ─────────────────────────────────────────────────────────
+# ── Información del usuario ──────────────────────────────────────────────────
+
+def get_user_info(token: str) -> dict:
+    """
+    Obtiene el email y nombre del usuario desde /me en Microsoft Graph.
+
+    Requiere el permiso User.Read (incluido por defecto en cuentas corporativas).
+
+    Retorna
+    -------
+    dict con claves:
+      "email" : mail o userPrincipalName del usuario.
+      "name"  : displayName del usuario.
+    """
+    if not _REQUESTS_AVAILABLE:
+        raise ImportError(
+            "La librería 'requests' no está instalada. "
+            "Ejecuta: pip install requests"
+        )
+    response = _requests.get(
+        f"{_GRAPH_BASE}/me",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    data = response.json()
+    return {
+        "email": data.get("mail") or data.get("userPrincipalName") or "",
+        "name":  data.get("displayName", ""),
+    }
+
 
 def get_user_email(token: str) -> str:
     """

@@ -15,12 +15,12 @@ import pandas as pd
 from openpyxl import load_workbook, Workbook
 
 from config import (
-    EMAIL_COLABORADOR,
     BISOPI_API_TOKEN,
     PLANTILLA_PATH,
     has_local_path,
     has_graph_access,
     is_cloud,
+    get_email_colaborador,
     AZURE_CLIENT_ID,
     AZURE_TENANT_ID,
 )
@@ -45,6 +45,7 @@ try:
         get_calendar_events,
         events_to_dataframe as graph_events_to_dataframe,
         get_user_email,
+        get_user_info,
     )
     _GRAPH_CLIENT_AVAILABLE = True
 except ImportError:
@@ -125,10 +126,108 @@ html, body, [class*="css"] { font-family: 'Segoe UI', sans-serif; }
 """, unsafe_allow_html=True)
 
 
+# ── Control de sesión — autenticación obligatoria en cloud ────────────────────
+if is_cloud():
+    if "cloud__user_email" not in st.session_state:
+        # ── Página de login (cloud no autenticado) ────────────────────────────
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);
+                    border-radius:12px;padding:32px 36px;margin-bottom:28px;">
+          <div style="color:#ffffff;font-size:1.6rem;font-weight:700;">⚡ BISOPI Automator</div>
+          <div style="color:#a0aec0;font-size:0.9rem;margin-top:6px;">
+            Para usar la app debes autenticarte con tu cuenta corporativa de Bision.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        _cl_flow = st.session_state.get("cloud__auth_flow")
+
+        if _cl_flow is None:
+            # Paso 1 — botón para iniciar el flujo
+            _cl_conn_col, _ = st.columns([3, 9])
+            with _cl_conn_col:
+                if st.button(
+                    "🔗 Conectar con Microsoft",
+                    type="primary",
+                    key="cloud__btn_connect",
+                    use_container_width=True,
+                ):
+                    try:
+                        _cl_flow = initiate_device_flow()
+                        st.session_state["cloud__auth_flow"] = _cl_flow
+                        st.rerun()
+                    except (RuntimeError, ImportError) as _cl_exc:
+                        st.error(str(_cl_exc))
+            st.caption(
+                "Se usará el método de código de dispositivo — "
+                "no abre ventanas emergentes."
+            )
+        else:
+            # Paso 2 — mostrar código y esperar confirmación
+            st.info(
+                f"**1.** Abre este enlace en tu navegador: "
+                f"[{_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')}]"
+                f"({_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')})\n\n"
+                f"**2.** Ingresa el código: `{_cl_flow.get('user_code', '—')}`\n\n"
+                "**3.** El código expira en 15 minutos."
+            )
+            _cl_done_col, _cl_cancel_col, _ = st.columns([2, 2, 8])
+            with _cl_done_col:
+                if st.button(
+                    "✅ Ya me autentiqué",
+                    type="primary",
+                    key="cloud__btn_done",
+                    use_container_width=True,
+                ):
+                    try:
+                        _cl_token = poll_device_flow(_cl_flow)
+                        if _cl_token is None:
+                            st.info(
+                                "⏳ Aún no detectamos tu autenticación — "
+                                "espera unos segundos e inténtalo de nuevo."
+                            )
+                        else:
+                            _cl_user = get_user_info(_cl_token)
+                            st.session_state["cloud__user_email"]     = _cl_user["email"]
+                            st.session_state["cloud__user_name"]      = _cl_user["name"]
+                            st.session_state["cloud__auth_flow"]      = None
+                            st.session_state["outlook__graph_token"]  = _cl_token
+                            st.session_state["outlook__graph_email"]  = _cl_user["email"]
+                            st.rerun()
+                    except (RuntimeError, ImportError) as _cl_exc:
+                        st.error(str(_cl_exc))
+            with _cl_cancel_col:
+                if st.button(
+                    "✖ Cancelar",
+                    key="cloud__btn_cancel",
+                    use_container_width=True,
+                ):
+                    st.session_state["cloud__auth_flow"] = None
+                    st.rerun()
+
+        st.stop()
+
+    else:
+        # ── Autenticado — email del usuario desde session_state ───────────────
+        email_colaborador = st.session_state["cloud__user_email"]
+        st.sidebar.success(f"👤 {st.session_state['cloud__user_name']}")
+        st.sidebar.caption(email_colaborador)
+        if st.sidebar.button("Cerrar sesión", key="cloud__btn_logout"):
+            for _k in ["cloud__user_email", "cloud__user_name",
+                       "cloud__auth_flow", "outlook__graph_token",
+                       "outlook__graph_email"]:
+                st.session_state.pop(_k, None)
+            st.rerun()
+
+else:
+    # ── Local — email desde .env ──────────────────────────────────────────────
+    email_colaborador = get_email_colaborador()
+
+
 # ── Header ────────────────────────────────────────────────────────────────────
 user_badge = ""
-if EMAIL_COLABORADOR:
-    user_badge = f'<div class="badge-user">🟢 {EMAIL_COLABORADOR}</div>'
+if email_colaborador:
+    user_badge = f'<div class="badge-user">🟢 {email_colaborador}</div>'
 else:
     user_badge = (
         '<div class="badge-user" style="background:rgba(239,68,68,0.15);'
@@ -149,8 +248,9 @@ st.markdown(f"""
 
 # ── Validación de configuración ───────────────────────────────────────────────
 _config_errors: list[str] = []
-if not EMAIL_COLABORADOR:
-    _config_errors.append("**EMAIL_COLABORADOR** no está definido.")
+# En cloud el email viene del login — solo se valida en local
+if not is_cloud() and not email_colaborador:
+    _config_errors.append("**EMAIL_COLABORADOR** no está definido en el archivo `.env`.")
 if not BISOPI_API_TOKEN:
     _config_errors.append("**BISOPI_API_TOKEN** no está definido.")
 
@@ -715,7 +815,7 @@ with tab_archivo:
 
                         df_result = upload(
                             df_to_upload,
-                            EMAIL_COLABORADOR,
+                            email_colaborador,
                             BISOPI_API_TOKEN,
                             _on_progress,
                         )
@@ -1567,7 +1667,7 @@ Comentario: Notas adicionales
 
                             _ol_df_result = upload(
                                 _ol_df_to_upload,
-                                EMAIL_COLABORADOR,
+                                email_colaborador,
                                 BISOPI_API_TOKEN,
                                 _ol_on_progress,
                             )

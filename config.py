@@ -42,6 +42,17 @@ def is_cloud() -> bool:
     return os.getenv("BISOPI_ENV", "local").strip().lower() == "cloud"
 
 
+def get_email_colaborador() -> str | None:
+    """
+    Retorna el email del colaborador según el ambiente:
+      - Local : lee EMAIL_COLABORADOR desde el .env (puede ser None si no está).
+      - Cloud : retorna None — el email se obtiene del login con Microsoft.
+    """
+    if is_cloud():
+        return None
+    return os.getenv("EMAIL_COLABORADOR") or None
+
+
 def has_graph_access() -> bool:
     """
     True si AZURE_CLIENT_ID y AZURE_TENANT_ID están ambos configurados en .env.
