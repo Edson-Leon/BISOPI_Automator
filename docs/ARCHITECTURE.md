@@ -1,30 +1,30 @@
-# BISOPI Automator — Architecture Reference
+# BISOPI Automator — Referencia de Arquitectura
 
-## Overview
+## Vision general
 
-BISOPI Automator is a single-process Streamlit application with no custom backend. All logic runs in the Python process that serves the UI. The architecture follows a strict separation between data sources (how records enter the system), the internal processing pipeline (validation, upload, history), and the UI layer (main.py). Each data source is an independent module that normalizes its input into a shared internal DataFrame schema (`REGISTRO_COLUMNS`), after which all sources share the exact same validation, upload, and persistence logic. The application supports two deployment modes — local and Streamlit Cloud — controlled by the `BISOPI_ENV` environment variable, which gates cloud-only behaviors (mandatory Microsoft login, forced download mode for files) without duplicating any business logic.
+BISOPI Automator es una aplicacion Streamlit de proceso unico sin backend propio. Toda la logica corre en el proceso Python que sirve la interfaz. La arquitectura establece una separacion estricta entre las fuentes de datos (como entran los registros al sistema), el pipeline interno de procesamiento (validacion, envio, historico) y la capa de interfaz (main.py). Cada fuente de datos es un modulo independiente que normaliza su entrada al esquema interno compartido (`REGISTRO_COLUMNS`), a partir del cual todas las fuentes comparten exactamente la misma logica de validacion, envio y persistencia. La aplicacion soporta dos modos de despliegue — local y Streamlit Cloud — controlados por la variable de entorno `BISOPI_ENV`, que activa comportamientos exclusivos del cloud (login obligatorio con Microsoft, modo descarga forzado para archivos) sin duplicar ninguna logica de negocio.
 
 ---
 
-## Flow Diagram
+## Diagrama de flujo
 
 ```
-User input
+Entrada del usuario
     |
-    +-- Excel file / copy-paste ──> loader.py ──────────+
-    |                                                    |
-    +-- ICS file ──────────────> outlook_parser.py ─────+
-    |                                                    |
-    +-- Microsoft Graph API ───> graph_client.py ────── +
-                                        |                |
-                                        v                v
-                                 REGISTRO_COLUMNS DataFrame
+    +-- Archivo Excel / copy-paste ──> loader.py ──────────+
+    |                                                       |
+    +-- Archivo ICS ────────────> outlook_parser.py ────────+
+    |                                                       |
+    +-- Microsoft Graph API ───> graph_client.py ──────────+
+                                        |                   |
+                                        v                   v
+                                 DataFrame REGISTRO_COLUMNS
                                         |
                                    validator.py
-                                  (business rules)
+                                 (reglas de negocio)
                                         |
                                    main.py UI
-                                  (editable table)
+                                 (tabla editable)
                                         |
                                    uploader.py
                                POST /api/ImputarHoras
@@ -32,74 +32,74 @@ User input
                               +-------- + --------+
                               |                   |
                          file_manager.py      history.py
-                       (save to disk or     (append to
-                        return bytes)       Historico sheet)
+                       (guardar en disco o   (agregar al
+                        retornar bytes)      Historico)
 ```
 
 ---
 
-## Module Reference
+## Referencia de modulos
 
-| Module | Responsibility | Depends on |
+| Modulo | Responsabilidad | Depende de |
 |---|---|---|
-| `config.py` | Environment variables, deployment mode detection (`is_cloud()`), email resolution (`get_email_colaborador()`) | `python-dotenv`, `os` |
-| `modules/loader.py` | Parse Excel files and TSV copy-paste into the internal DataFrame. Defines `REGISTRO_COLUMNS` — the canonical schema used by all modules. Builds weekly summary metrics. | `pandas`, `openpyxl` |
-| `modules/validator.py` | Apply business rules row-by-row and globally. Manages Colombia public holidays for closed-week detection. Never calls the API. | `pandas` |
-| `modules/uploader.py` | Send each `Pendiente` row to `POST /api/ImputarHoras`. Orders laborales before adicionales. Handles timeout, connection errors, 400/401/5xx. | `requests`, `config.py` |
-| `modules/file_manager.py` | Open and save the Excel workbook. In cloud mode, forces serialization to bytes instead of writing to disk. | `openpyxl`, `config.py` |
-| `modules/history.py` | Append successfully uploaded rows to the `Historico` sheet. Generate download bytes for non-local mode. | `openpyxl`, `pandas` |
-| `modules/outlook_parser.py` | Parse `.ics` files into the internal DataFrame. Defines `_process_event_list` (shared with `graph_client.py`). Handles `[BISOPI]` tag detection, description key-value parsing, 15-minute rounding, all-day events, and overlap detection. Exports to the Excel template with highlighted cells. | `icalendar`, `openpyxl`, `pandas`, `loader.py` |
-| `modules/graph_client.py` | Microsoft Graph API integration. Authenticates via MSAL (`PublicClientApplication` only — no client secret). Implements non-blocking device code polling (`poll_device_flow`). Fetches calendar events with pagination. Converts Graph JSON to the internal DataFrame by delegating to `_process_event_list`. | `msal`, `requests`, `outlook_parser.py` |
-| `main.py` | Streamlit UI. Cloud authentication gate. Three source tabs. Shared `_render_ol_results()` for the Outlook results section. Routes `email_colaborador` dynamically based on environment. | All modules above |
+| `config.py` | Variables de entorno, deteccion del modo de despliegue (`is_cloud()`), resolucion del email del colaborador (`get_email_colaborador()`) | `python-dotenv`, `os` |
+| `modules/loader.py` | Parsear archivos Excel y texto TSV al DataFrame interno. Define `REGISTRO_COLUMNS` — el esquema canonico usado por todos los modulos. Construye metricas de resumen semanal. | `pandas`, `openpyxl` |
+| `modules/validator.py` | Aplicar reglas de negocio fila a fila y de forma global. Gestiona festivos colombianos para la deteccion de semanas cerradas. Nunca llama a la API. | `pandas` |
+| `modules/uploader.py` | Enviar cada fila en estado `Pendiente` a `POST /api/ImputarHoras`. Ordena laborales antes que adicionales. Maneja timeout, errores de conexion, 400/401/5xx. | `requests`, `config.py` |
+| `modules/file_manager.py` | Abrir y guardar el workbook Excel. En modo cloud fuerza serializacion a bytes en lugar de escribir en disco. | `openpyxl`, `config.py` |
+| `modules/history.py` | Agregar las filas enviadas exitosamente a la hoja `Historico`. Generar bytes de descarga en modo no local. | `openpyxl`, `pandas` |
+| `modules/outlook_parser.py` | Parsear archivos `.ics` al DataFrame interno. Define `_process_event_list` (compartida con `graph_client.py`). Maneja deteccion de etiqueta `[BISOPI]`, parseo de clave-valor en descripciones, redondeo a 15 minutos, eventos de dia completo y deteccion de solapamiento. Exporta a la plantilla Excel con celdas resaltadas. | `icalendar`, `openpyxl`, `pandas`, `loader.py` |
+| `modules/graph_client.py` | Integracion con Microsoft Graph API. Autentica via MSAL (solo `PublicClientApplication` — sin client secret). Implementa polling no bloqueante de device code (`poll_device_flow`). Obtiene eventos del calendario con paginacion. Convierte el JSON de Graph al DataFrame interno delegando en `_process_event_list`. | `msal`, `requests`, `outlook_parser.py` |
+| `main.py` | Interfaz Streamlit. Bloque de autenticacion obligatoria en cloud. Tres pestanas de fuentes. Funcion `_render_ol_results()` compartida para la seccion de resultados de Outlook. Resuelve `email_colaborador` dinamicamente segun el ambiente. | Todos los modulos anteriores |
 
 ---
 
-## Technical Decisions
+## Decisiones tecnicas
 
-**Single internal schema (`REGISTRO_COLUMNS`)**
-All data sources normalize to the same 11-column DataFrame before validation and upload. This means validator.py, uploader.py, history.py, and file_manager.py are completely source-agnostic. Adding a new source only requires producing a conforming DataFrame.
+**Esquema interno unico (`REGISTRO_COLUMNS`)**
+Todas las fuentes normalizan al mismo DataFrame de 11 columnas antes de validar y enviar. Esto hace que `validator.py`, `uploader.py`, `history.py` y `file_manager.py` sean completamente independientes de la fuente. Agregar una nueva fuente solo requiere producir un DataFrame conforme al esquema.
 
-**Non-blocking device code polling (`poll_device_flow`)**
-MSAL's `acquire_token_by_device_flow()` is a blocking loop that polls every 5-15 seconds until the user authenticates or the flow expires. In Streamlit, this freezes the server thread and drops the WebSocket connection, losing session state. The solution is a single non-blocking HTTP POST per button click that returns the token immediately if ready, or `None` if still pending. The user clicks the button again after authenticating. The token endpoint URL is taken from `flow["token_endpoint"]` (provided by MSAL during `initiate_device_flow`) rather than constructed from `TENANT_ID`, which avoids URL formatting issues with non-GUID tenant identifiers.
+**Polling no bloqueante del device code (`poll_device_flow`)**
+`acquire_token_by_device_flow()` de MSAL es un loop bloqueante que consulta el endpoint de token cada 5-15 segundos hasta que el usuario se autentica o el flujo expira. En Streamlit esto congela el hilo del servidor y cierra la conexion WebSocket, perdiendo el estado de sesion. La solucion es un unico POST HTTP no bloqueante por clic de boton que retorna el token inmediatamente si esta listo, o `None` si aun esta pendiente. El usuario vuelve a hacer clic tras autenticarse. La URL del endpoint se toma de `flow["token_endpoint"]` (provisto por MSAL en `initiate_device_flow`) en lugar de construirla con `TENANT_ID`, evitando problemas de formato cuando el identificador del tenant no es un GUID.
 
-**`_process_event_list` shared function**
-The ICS path (`parse_ics`) and the Graph API path (`events_to_dataframe`) both produce a list of normalized event dicts before converting to a DataFrame. The entire conversion logic — BISOPI tag classification, overlap detection, 15-minute rounding, DataFrame construction and sorting — lives in `_process_event_list` in `outlook_parser.py`, imported by `graph_client.py`. No logic is duplicated.
+**Funcion `_process_event_list` compartida**
+La ruta ICS (`parse_ics`) y la ruta Graph API (`events_to_dataframe`) producen ambas una lista de dicts de eventos normalizados antes de convertir al DataFrame. Toda la logica de conversion — clasificacion por etiqueta BISOPI, deteccion de solapamiento, redondeo a 15 minutos, construccion y ordenacion del DataFrame — vive en `_process_event_list` dentro de `outlook_parser.py`, importada por `graph_client.py`. No se duplica logica.
 
-**`PublicClientApplication` only**
-The Azure AD integration uses only the public client flow (interactive window and device code). There is no client secret anywhere in the codebase. This is intentional: the app acts as a delegated-permission client on behalf of the signed-in user, consistent with the `Calendars.Read` and `User.Read` permission model.
+**Solo `PublicClientApplication`**
+La integracion con Azure AD usa unicamente el flujo de cliente publico (ventana interactiva y device code). No existe ningun client secret en el codigo. Es intencional: la app actua como cliente de permisos delegados en nombre del usuario autenticado, coherente con el modelo de permisos `Calendars.Read` y `User.Read`.
 
-**`BISOPI_ENV` for deployment mode**
-Rather than maintaining two codebases or using feature flags per function, a single `is_cloud()` function in `config.py` gates all cloud-specific behavior. The three affected points are: file persistence (forced download), Outlook auth method selector (device code only shown in cloud without IT configuring a redirect URI), and the mandatory login gate.
+**`BISOPI_ENV` para el modo de despliegue**
+En lugar de mantener dos bases de codigo o flags por funcion, una unica funcion `is_cloud()` en `config.py` controla todo el comportamiento exclusivo del cloud. Los tres puntos afectados son: persistencia de archivos (descarga forzada), selector del metodo de autenticacion en Outlook (solo device code en cloud sin URI de redireccion configurada por IT) y el bloque de login obligatorio.
 
 ---
 
-## Adding a New Data Source
+## Como agregar una nueva fuente de datos
 
-1. Create `modules/<source_name>.py`. The module's public function must return `pd.DataFrame` with exactly the columns in `REGISTRO_COLUMNS` (defined in `loader.py`). Rows that cannot be classified must set `Estado` to `"⚠ Sin clasificar"` or `"⚠ Incompleto"`. Rows ready to send must set `Estado` to `"Pendiente"`.
+1. Crear `modules/<nombre_fuente>.py`. La funcion publica del modulo debe retornar `pd.DataFrame` con exactamente las columnas de `REGISTRO_COLUMNS` (definidas en `loader.py`). Las filas que no puedan clasificarse deben tener `Estado` igual a `"⚠ Sin clasificar"` o `"⚠ Incompleto"`. Las filas listas para enviar deben tener `Estado` igual a `"Pendiente"`.
 
-2. Add a new tab in `main.py` following the existing pattern:
-   - Initialize session state keys with a source-specific prefix (e.g. `devops__`).
-   - Call `validate()` on the DataFrame before displaying.
-   - Render the table with `st.data_editor`.
-   - Call `upload(df, email_colaborador, BISOPI_API_TOKEN, on_progress)`.
-   - Persist the result with `save_plantilla` and `append_historico`.
+2. Agregar una nueva pestana en `main.py` siguiendo el patron existente:
+   - Inicializar claves de session state con un prefijo especifico de la fuente (ej. `devops__`).
+   - Llamar a `validate()` sobre el DataFrame antes de mostrarlo.
+   - Renderizar la tabla con `st.data_editor`.
+   - Llamar a `upload(df, email_colaborador, BISOPI_API_TOKEN, on_progress)`.
+   - Persistir el resultado con `save_plantilla` y `append_historico`.
 
-3. No changes are required in `validator.py`, `uploader.py`, `history.py`, or `file_manager.py`.
+3. No se requieren cambios en `validator.py`, `uploader.py`, `history.py` ni `file_manager.py`.
 
 ---
 
 ## API — BISOPI ImputarHoras
 
-| Parameter | Value |
+| Parametro | Valor |
 |---|---|
-| Base URL | `https://bisopi-open-hkdhcucjeuadafhc.eastus-01.azurewebsites.net` |
+| URL base | `https://bisopi-open-hkdhcucjeuadafhc.eastus-01.azurewebsites.net` |
 | Endpoint | `POST /api/ImputarHoras` |
-| Authentication | Header `X-API-Token: <token>` |
+| Autenticacion | Header `X-API-Token: <token>` |
 | Content-Type | `application/json` |
-| Success | `200 OK` |
-| Validation error | `400 Bad Request` with message in body |
-| Auth error | `401 Unauthorized` — raises `TokenError`, stops the batch |
-| Server error | `500 Internal Server Error` |
+| Exito | `200 OK` |
+| Error de validacion | `400 Bad Request` con mensaje en el cuerpo |
+| Error de autenticacion | `401 Unauthorized` — lanza `TokenError`, detiene el batch |
+| Error del servidor | `500 Internal Server Error` |
 
 **Payload — Laboral:**
 ```json
@@ -114,7 +114,7 @@ Rather than maintaining two codebases or using feature flags per function, a sin
 }
 ```
 
-**Payload — Adicional** (adds `horaInicio`, `horaFin`, `comentario`):
+**Payload — Adicional** (agrega `horaInicio`, `horaFin`, `comentario`):
 ```json
 {
   "tipoHora": "Adicional",
@@ -124,28 +124,28 @@ Rather than maintaining two codebases or using feature flags per function, a sin
 }
 ```
 
-`horaFin` is computed by the app: `horaInicio + tiempoEjecutado`. The API does not accept it as blank.
+`horaFin` es calculado por la app: `horaInicio + tiempoEjecutado`. La API no acepta este campo en blanco.
 
 ---
 
-## Known API Issues
+## Hallazgos conocidos de la API
 
-| Issue | Behavior | App workaround |
+| Hallazgo | Comportamiento | Manejo en la app |
 |---|---|---|
-| Non-existent project returns 500 | When `proyecto` does not exist in BISOPI the API responds `500` instead of a descriptive `400`. Under review by the BISOPI team. | `uploader.py` catches all non-200/400/401 codes as errors and shows the HTTP status code. The row is marked red. |
-| Closed-week not validated by API | The API accepts records for weeks already closed (returns `200 OK` when it should reject them). Confirmed bug, pending correction. | `validator.py` computes the closure deadline locally (Monday after the week at 12:30, shifted to Tuesday on Colombia public holidays) and adds a yellow warning. The row is not blocked — if the API eventually fixes this, the warning remains harmless. |
-| 40-hour weekly limit not validated by API | The API allows more than 40 labor hours per week without error. Confirmed bug, pending correction. | `validator.py` accumulates labor minutes per ISO week across the batch and marks rows that exceed 2400 minutes as errors before any API call is made. |
+| Proyecto inexistente devuelve 500 | Cuando `proyecto` no existe en BISOPI la API responde `500` en lugar de un `400` descriptivo. En revision por el equipo de BISOPI. | `uploader.py` captura todos los codigos que no sean 200/400/401 como error y muestra el codigo HTTP. La fila queda marcada en rojo. |
+| Semana cerrada no validada por la API | La API acepta registros de semanas ya cerradas (responde `200 OK` cuando deberia rechazarlos). Bug confirmado, pendiente de correccion. | `validator.py` calcula el cierre localmente (el lunes siguiente a la semana a las 12:30, desplazado al martes si es festivo colombiano) y agrega una advertencia en amarillo. La fila no se bloquea — si la API corrige esto en el futuro, la advertencia resulta inocua. |
+| Limite de 40h semanales no validado por la API | La API permite registrar mas de 40 horas laborales por semana sin error. Bug confirmado, pendiente de correccion. | `validator.py` acumula los minutos laborales por semana ISO en el batch y marca como error las filas que superen 2400 minutos antes de hacer cualquier llamada a la API. |
 
 ---
 
-## Future Scalability
+## Escalabilidad futura
 
-| Item | Notes |
+| Item | Notas |
 |---|---|
-| Azure DevOps integration | Planned as V2. Tab already reserved in the UI (`tab_devops`). Would require a DevOps personal access token and a mapping definition from work item fields to BISOPI fields. Implementation follows the same source module pattern described above. |
-| Automatic catalog from BISOPI | The `Catalogos` sheet in the Excel template is currently maintained manually. A future version could fetch valid project/task names directly from a BISOPI catalog endpoint (if exposed) and populate dropdowns in the UI. |
-| Multi-user audit trail | In the current cloud deployment, each session is independent and stateless. A shared audit log (e.g. stored in a cloud database or appended to a shared Excel via SharePoint) would require a persistent storage layer, which Streamlit Cloud does not provide natively. |
-| Redirect URI for interactive login | The interactive browser login method is implemented but requires IT to register the app's redirect URI in Azure AD. No code changes are needed once this is configured — the radio button in the login screen already exposes both methods. |
+| Integracion con Azure DevOps | Planeada como V2. La pestana ya esta reservada en la interfaz (`tab_devops`). Requeriria un token de acceso personal de DevOps y una definicion del mapeo de campos de work items a los campos de BISOPI. La implementacion sigue el mismo patron de modulo de fuente descrito arriba. |
+| Catalogo automatico desde BISOPI | La hoja `Catalogos` de la plantilla Excel se mantiene manualmente. Una version futura podria obtener los nombres validos de proyectos y tareas directamente desde un endpoint de catalogo de BISOPI (si se expone) y poblar desplegables en la interfaz. |
+| Registro de auditoria multiusuario | En el despliegue cloud actual cada sesion es independiente y sin estado. Un log compartido (por ejemplo en una base de datos cloud o en un Excel compartido via SharePoint) requeriria una capa de almacenamiento persistente que Streamlit Cloud no provee de forma nativa. |
+| URI de redireccion para login interactivo | El metodo de login con ventana de navegador esta implementado pero requiere que IT registre la URI de redireccion de la app en Azure AD. No se necesitan cambios en el codigo una vez configurado — el selector en la pantalla de login ya expone ambos metodos. |
 
 ---
 
