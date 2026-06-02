@@ -130,8 +130,15 @@ Usuarios técnicos, quienes quieren la funcionalidad completa de archivo local, 
 
 ```batch
 @echo off
-echo Instalando BISOPI Automator...
-pip install -r requirements.txt
+echo Verificando Python...
+python --version
+if errorlevel 1 (
+    echo ERROR: Python no encontrado. Instala Python 3.10 o superior desde https://www.python.org
+    pause
+    exit /b 1
+)
+echo Instalando dependencias...
+python -m pip install -r requirements.txt
 echo.
 echo Instalacion completa.
 echo Copia .env.example a .env y configura tus credenciales.
@@ -145,7 +152,7 @@ pause
 @echo off
 echo Iniciando BISOPI Automator...
 start http://localhost:8501
-streamlit run main.py
+python -m streamlit run main.py
 ```
 
 ---

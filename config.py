@@ -37,6 +37,11 @@ def has_local_path() -> bool:
     return bool(PLANTILLA_PATH and os.path.isfile(PLANTILLA_PATH))
 
 
+def is_cloud() -> bool:
+    """True si BISOPI_ENV está configurado como 'cloud'."""
+    return os.getenv("BISOPI_ENV", "local").strip().lower() == "cloud"
+
+
 def has_graph_access() -> bool:
     """
     True si AZURE_CLIENT_ID y AZURE_TENANT_ID están ambos configurados en .env.

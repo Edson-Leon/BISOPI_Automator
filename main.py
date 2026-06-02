@@ -20,6 +20,7 @@ from config import (
     PLANTILLA_PATH,
     has_local_path,
     has_graph_access,
+    is_cloud,
     AZURE_CLIENT_ID,
     AZURE_TENANT_ID,
 )
@@ -196,9 +197,9 @@ with tab_archivo:
             st.session_state[_key] = _val
 
     # ─────────────────────────────────────────────────────────────────────────
-    # MODO A: ruta local configurada y archivo existente
+    # MODO A: ruta local configurada y archivo existente (solo en local)
     # ─────────────────────────────────────────────────────────────────────────
-    if _LOCAL_MODE:
+    if not is_cloud() and _LOCAL_MODE:
         col_info, col_btn = st.columns([8, 2])
         with col_info:
             st.success(f"✅ Archivo configurado: `{PLANTILLA_PATH}`")
@@ -1015,16 +1016,23 @@ with tab_outlook:
             # ── No conectado ───────────────────────────────────────────────────
             else:
                 # ── Selector de método de autenticación ───────────────────────
-                st.radio(
-                    "Método de autenticación",
-                    options=[
-                        "🖥️ Ventana de login de Microsoft",
-                        "📱 Código de dispositivo (sin ventana emergente)",
-                    ],
-                    key="outlook__auth_method",
-                    horizontal=True,
-                )
-                _g_auth_method = st.session_state["outlook__auth_method"]
+                if is_cloud():
+                    st.info(
+                        "☁️ En la versión Cloud solo está disponible el método "
+                        "de código de dispositivo."
+                    )
+                    _g_auth_method = "📱 Código de dispositivo (sin ventana emergente)"
+                else:
+                    st.radio(
+                        "Método de autenticación",
+                        options=[
+                            "🖥️ Ventana de login de Microsoft",
+                            "📱 Código de dispositivo (sin ventana emergente)",
+                        ],
+                        key="outlook__auth_method",
+                        horizontal=True,
+                    )
+                    _g_auth_method = st.session_state["outlook__auth_method"]
                 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
                 # ── Método: Ventana de login (interactive) ────────────────────
@@ -1672,18 +1680,124 @@ Comentario: Notas adicionales
 with tab_about:
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Encabezado de la herramienta
+    # ── Bloque 1 — ¿Qué es BISOPI Automator? ─────────────────────────────────
+    st.header("¿Qué es BISOPI Automator?")
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);
-                border-radius:12px;padding:32px 36px;margin-bottom:20px;">
-      <div style="color:#a0aec0;font-size:0.75rem;font-weight:600;letter-spacing:1.5px;
-                  text-transform:uppercase;margin-bottom:8px;">Herramienta</div>
-      <div style="color:#ffffff;font-size:1.6rem;font-weight:700;letter-spacing:-0.5px;">
-        ⚡ BISOPI Automator
-      </div>
-      <div style="color:#63b3ed;font-size:0.9rem;margin-top:6px;">v1.0 — Mayo 2026</div>
-    </div>
-    """, unsafe_allow_html=True)
+BISOPI Automator elimina la carga manual de horas en BISOPI: en lugar de ingresar registro
+por registro en el portal, preparas tu semana desde una fuente de datos y la app envía todo
+en un solo paso con validación previa de reglas de negocio.
+
+Dispone de **tres modos de carga**:
+
+- 📂 **Plantilla Excel** — completa la hoja *Registro* de la plantilla oficial y cárgala directamente, o pega el rango copiado desde Excel.
+- 📅 **Agenda Outlook · archivo ICS** — exporta tu calendario como `.ics` y la app extrae automáticamente los eventos marcados para BISOPI.
+- 🔗 **Agenda Outlook · Microsoft Graph API** — conecta tu cuenta de Microsoft 365 directamente, sin exportar ningún archivo, mediante autenticación segura con tu cuenta corporativa.
+    """)
+
+    st.divider()
+
+    # ── Bloque 2 — Plantilla Excel ────────────────────────────────────────────
+    st.header("📂 Cómo usar la plantilla Excel")
+    st.markdown("""
+1. Descarga la plantilla **`Plantilla_BISOPI_Automator.xlsx`** desde el repositorio o solicítala al equipo.
+2. Abre el archivo y dirígete a la hoja **Registro** — ingresa cada registro a partir de la fila 3, una fila por hora imputada.
+3. Usa los desplegables de **Tipo Hora** (`Laboral` / `Adicional`) y **Minutos** (`0` / `15` / `30` / `45`).
+4. Para horas **Adicionales** completa también **Hora Inicio** en formato `HH:MM` y el campo **Comentario** (ambos obligatorios).
+5. Los valores de **Proyecto**, **Grupo Tarea** y **Tarea** deben coincidir **exactamente** con los nombres en BISOPI — incluyendo mayúsculas, tildes y espacios.
+6. Consulta la hoja **Catálogos** del mismo archivo para copiar los nombres correctos sin riesgo de error tipográfico.
+7. Consulta la hoja **Ejemplos** para ver casos representativos de distintos tipos de registro.
+    """)
+
+    st.divider()
+
+    # ── Bloque 3 — Integración con Outlook ───────────────────────────────────
+    st.header("📅 Integración con Outlook")
+
+    st.subheader("Carga por archivo ICS")
+    st.markdown("""
+1. **Exporta tu calendario** desde Outlook como archivo `.ics`:
+   - **Outlook Web:** Ve a *Calendario → Configuración (⚙️) → Calendarios compartidos → Publicar un calendario*. Elige el calendario, define los permisos y haz clic en **Publicar**. Copia el enlace `.ics` generado y ábrelo en el navegador para descargarlo.
+   - **Outlook Escritorio (Windows):** *Archivo → Guardar calendario* → elige nombre y haz clic en **Más opciones** para seleccionar el rango de fechas → **Aceptar → Guardar**.
+2. En la pestaña **Agenda Outlook**, selecciona el submodo **Archivo ICS** y sube el archivo.
+3. Ajusta el **rango de fechas** (inicio y fin de semana) — la app filtra automáticamente los eventos del periodo seleccionado.
+4. Revisa los eventos detectados en la tabla editable, completa los campos faltantes y pulsa **Subir a BISOPI**.
+    """)
+
+    st.subheader("Convención de eventos para BISOPI")
+    st.markdown(
+        "Para que la app reconozca un evento automáticamente, el **título** debe comenzar con `[BISOPI]`:\n\n"
+        "```\n[BISOPI] Revisión de sprint con el equipo\n```\n\n"
+        "La **descripción** del evento puede incluir los siguientes campos (uno por línea):"
+    )
+    st.code(
+        "proyecto: NOMBRE-EXACTO-DEL-PROYECTO\n"
+        "grupo:    Nombre del grupo de tarea\n"
+        "tarea:    Nombre exacto de la tarea\n"
+        "tipo:     Laboral\n"
+        "comentario: Descripción opcional",
+        language="text",
+    )
+    st.markdown("""
+> ⚠️ **Nota:** Los eventos **sin** `[BISOPI]` en el título se importan igualmente como **"sin clasificar"**.
+> Puedes completar los campos directamente en la tabla editable de la app antes de enviar — ningún evento se descarta automáticamente.
+    """)
+
+    st.subheader("Conexión directa con Microsoft 365 (Graph API)")
+    st.markdown("""
+Requiere que IT registre la aplicación en Azure AD. Una vez configurada, en la pestaña
+**Agenda Outlook** aparecerá el selector de método de autenticación.
+
+1. Elige entre dos métodos:
+   - **🖥️ Ventana de login** — abre el navegador para iniciar sesión con tu cuenta corporativa.
+   - **📱 Código de dispositivo** — sin ventanas emergentes; te da un código para ingresar en `microsoft.com/devicelogin` desde cualquier dispositivo.
+2. Una vez conectado, selecciona el rango de fechas y pulsa **Obtener eventos del calendario**.
+    """)
+
+    st.divider()
+
+    # ── Bloque 4 — Reglas de negocio ─────────────────────────────────────────
+    st.header("📋 Reglas de negocio")
+    _rules_df = pd.DataFrame({
+        "Regla": [
+            "Límite semanal",
+            "Semana cerrada",
+            "Horas adicionales",
+            "Medianoche",
+            "Prioridad de envío",
+        ],
+        "Detalle": [
+            "Máximo 40 horas laborales por semana (lunes a domingo).",
+            "Los lunes a las 12:30 se cierra la semana anterior. Contacta a la persona responsable para abrirla excepcionalmente.",
+            "Requieren Hora Inicio (HH:MM) y Comentario obligatorios.",
+            "Una hora adicional no puede superar las 23:59 del mismo día.",
+            "Las horas laborales se envían antes que las adicionales automáticamente.",
+        ],
+    })
+    st.table(_rules_df)
+
+    st.divider()
+
+    # ── Bloque 5 — ¿Qué hacer si un registro falla? ──────────────────────────
+    st.header("🔴 ¿Qué hacer si un registro falla?")
+    st.markdown("""
+- Los registros fallidos quedan **resaltados en rojo** con el mensaje de error exacto devuelto por la API.
+- Corrige los datos directamente en la **tabla editable** — sin necesidad de recargar el archivo.
+- Pulsa **"Reintentar fallidos"** — solo se reenvían los registros que fallaron, no los ya exitosos.
+- Si el error indica **"semana cerrada"**: contacta a la persona responsable para solicitar la apertura excepcional.
+- Si el error indica **"proyecto no encontrado"**: verifica que el nombre coincida exactamente con BISOPI (mayúsculas, tildes y espacios incluidos).
+    """)
+
+    st.divider()
+
+    # ── Bloque 6 — Créditos ──────────────────────────────────────────────────
+    _env_label = "☁️ Cloud" if is_cloud() else "💻 Local"
+    st.markdown(
+        "<div style='color:#94a3b8;font-size:0.72rem;font-weight:600;letter-spacing:1.5px;"
+        "text-transform:uppercase;margin-bottom:4px;'>Créditos</div>"
+        f"<div style='color:#64748b;font-size:0.8rem;margin-bottom:14px;'>"
+        f"v1.0 — Mayo 2026 &nbsp;·&nbsp; {_env_label}</div>",
+        unsafe_allow_html=True,
+    )
 
     # Dos columnas: Autor | Stack técnico
     col_autor, col_stack = st.columns(2, gap="medium")
@@ -1724,6 +1838,8 @@ with tab_about:
             <span style="background:#dbeafe;color:#1d4ed8;font-size:0.75rem;font-weight:600;
                          padding:3px 10px;border-radius:20px;">openpyxl</span>
             <span style="background:#dbeafe;color:#1d4ed8;font-size:0.75rem;font-weight:600;
+                         padding:3px 10px;border-radius:20px;">msal</span>
+            <span style="background:#dbeafe;color:#1d4ed8;font-size:0.75rem;font-weight:600;
                          padding:3px 10px;border-radius:20px;">requests</span>
           </div>
         </div>
@@ -1739,9 +1855,9 @@ with tab_about:
       <p style="color:#334155;font-size:0.88rem;line-height:1.7;margin:0;">
         Herramienta de automatización para el registro de horas en BISOPI.
         Desarrollada para eliminar el proceso manual de imputación tarea por tarea,
-        permitiendo cargar una semana completa desde una plantilla Excel con validación
-        previa de reglas de negocio.
-        Arquitectura escalable hacia integración con Azure DevOps y calendario de Outlook.
+        permitiendo cargar una semana completa desde plantilla Excel, archivo ICS o
+        conexión directa con Microsoft 365, con validación previa de reglas de negocio.
+        Arquitectura escalable hacia integración con Azure DevOps.
       </p>
     </div>
     """, unsafe_allow_html=True)

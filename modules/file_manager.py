@@ -97,6 +97,11 @@ def save_plantilla(
         bytes_or_none : bytes del xlsx cuando filepath es None y no hubo error;
                         None en todos los demás casos.
     """
+    # ── Forzar modo descarga en cloud ─────────────────────────────────────────
+    from config import is_cloud
+    if is_cloud():
+        filepath = None
+
     # ── Metadatos de autoría ──────────────────────────────────────────────────
     from datetime import datetime as _dt
     wb.properties.creator        = "Edson Leon"
