@@ -1891,13 +1891,27 @@ Dispone de **tres modos de carga**:
 
     st.subheader("Conexión directa con Microsoft 365 (Graph API)")
     st.markdown("""
-Requiere que IT registre la aplicación en Azure AD. Una vez configurada, en la pestaña
-**Agenda Outlook** aparecerá el selector de método de autenticación.
+Requiere que IT registre la aplicación en Azure AD. El flujo de autenticación varía
+según el modo de distribución:
 
-1. Elige entre dos métodos:
-   - **🖥️ Ventana de login** — abre el navegador para iniciar sesión con tu cuenta corporativa.
-   - **📱 Código de dispositivo** — sin ventanas emergentes; te da un código para ingresar en `microsoft.com/devicelogin` desde cualquier dispositivo.
-2. Una vez conectado, selecciona el rango de fechas y pulsa **Obtener eventos del calendario**.
+**☁️ Versión Cloud:**
+La autenticación ocurre en la **pantalla de inicio** de la app, antes de ver cualquier pestaña.
+Al autenticarte, tu email corporativo se obtiene automáticamente y queda disponible
+para toda la sesión — incluyendo la pestaña Agenda Outlook, que ya aparece conectada sin pasos adicionales.
+
+**💻 Versión Local:**
+La autenticación se realiza desde la pestaña **Agenda Outlook** al seleccionar el submodo
+**Microsoft Graph API**.
+
+En ambos casos puedes elegir entre dos métodos:
+
+- **🖥️ Ventana de login** — abre el navegador para iniciar sesión con tu cuenta corporativa.
+  Requiere que IT registre la Redirect URI de la app en Azure AD.
+- **📱 Código de dispositivo** — sin ventanas emergentes; te da un código para ingresar en
+  `microsoft.com/devicelogin` desde cualquier dispositivo. No requiere configuración adicional en Azure AD.
+
+Una vez conectado, selecciona el rango de fechas en la pestaña **Agenda Outlook** y pulsa
+**Obtener eventos del calendario**.
     """)
 
     st.divider()
@@ -1936,7 +1950,46 @@ Requiere que IT registre la aplicación en Azure AD. Una vez configurada, en la 
 
     st.divider()
 
-    # ── Bloque 6 — Créditos ──────────────────────────────────────────────────
+    # ── Bloque 6 — Modos de distribución ─────────────────────────────────────
+    st.header("☁️ Modos de distribución")
+    st.markdown("""
+BISOPI Automator puede usarse de dos formas. El comportamiento cambia automáticamente
+según la variable de entorno `BISOPI_ENV`.
+    """)
+    _dist_df = pd.DataFrame({
+        "Característica": [
+            "Acceso",
+            "Instalación",
+            "Email del colaborador",
+            "Plantilla Excel",
+            "Autenticación Outlook",
+            "Actualizaciones",
+            "Requiere internet",
+        ],
+        "☁️ Cloud": [
+            "URL desde cualquier navegador",
+            "Ninguna — solo abrir el link",
+            "Automático desde el login con Microsoft",
+            "Se descarga al final de cada sesión",
+            "En la pantalla de inicio, antes de entrar a la app",
+            "Automáticas con cada cambio en el repositorio",
+            "Sí",
+        ],
+        "💻 Local": [
+            "Solo el equipo donde está instalado",
+            "Python + install.bat (una sola vez)",
+            "Configurado en el archivo .env",
+            "Lectura y escritura directa en disco",
+            "En la pestaña Agenda Outlook",
+            "Manuales — reemplazar archivos",
+            "Solo para API de BISOPI y Outlook",
+        ],
+    })
+    st.table(_dist_df)
+
+    st.divider()
+
+    # ── Bloque 7 — Créditos ──────────────────────────────────────────────────
     _env_label = "☁️ Cloud" if is_cloud() else "💻 Local"
     st.markdown(
         "<div style='color:#94a3b8;font-size:0.72rem;font-weight:600;letter-spacing:1.5px;"
