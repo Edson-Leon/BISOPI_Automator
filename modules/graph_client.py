@@ -229,7 +229,12 @@ def poll_device_flow(flow: dict) -> str | None:
             "Ejecuta: pip install requests"
         )
 
-    token_url = f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
+    # MSAL incluye el endpoint correcto en el flow dict — usarlo directamente
+    # evita problemas de formato con TENANT_ID (URL larga vs GUID vs dominio).
+    token_url = (
+        flow.get("token_endpoint")
+        or f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
+    )
     data = {
         "client_id":   _CLIENT_ID,
         "grant_type":  "urn:ietf:params:oauth:grant-type:device_code",
@@ -279,21 +284,26 @@ def get_user_info(token: str) -> dict:
       "email" : mail o userPrincipalName del usuario.
       "name"  : displayName del usuario.
     """
-    if not _REQUESTS_AVAILABLE:
-        raise ImportError(
-            "La librería 'requests' no está instalada. "
-            "Ejecuta: pip install requests"
-        )
-    response = _requests.get(
-        f"{_GRAPH_BASE}/me",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10,
-    )
-    data = response.json()
-    return {
-        "email": data.get("mail") or data.get("userPrincipalName") or "",
-        "name":  data.get("displayName", ""),
-    }
+    # Intentar obtener nombre y email desde Graph API /me
+    if _REQUESTS_AVAILABLE:
+        try:
+            response = _requests.get(
+                f"{_GRAPH_BASE}/me",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            if response.ok:
+                data = response.json()
+                email = data.get("mail") or data.get("userPrincipalName") or ""
+                name  = data.get("displayName", "")
+                if email:
+                    return {"email": email, "name": name}
+        except Exception:
+            pass  # fallback al decode JWT
+
+    # Fallback: extraer email desde los claims del JWT (sin llamada extra a la API)
+    email = get_user_email(token)
+    return {"email": email, "name": ""}
 
 
 def get_user_email(token: str) -> str:

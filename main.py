@@ -241,7 +241,7 @@ if is_cloud():
                                 st.session_state["outlook__graph_token"] = _cl_token
                                 st.session_state["outlook__graph_email"] = _cl_user["email"]
                                 st.rerun()
-                        except (RuntimeError, ImportError) as _cl_exc:
+                        except Exception as _cl_exc:
                             st.error(str(_cl_exc))
                 with _cl_cancel_col:
                     if st.button(
@@ -1269,7 +1269,7 @@ with tab_outlook:
                                         st.session_state["outlook__graph_email"] = _g_email
                                         st.session_state["outlook__auth_flow"]   = None
                                         st.rerun()
-                                except (RuntimeError, ImportError) as _g_exc:
+                                except Exception as _g_exc:
                                     st.error(str(_g_exc))
                         with _g_cancel_col:
                             if st.button(
