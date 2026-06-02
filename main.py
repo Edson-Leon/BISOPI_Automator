@@ -140,10 +140,23 @@ if is_cloud():
         </div>
         """, unsafe_allow_html=True)
 
+        # ── Selector de método ────────────────────────────────────────────────
+        st.radio(
+            "Método de autenticación",
+            options=[
+                "🖥️ Ventana de login de Microsoft",
+                "📱 Código de dispositivo (sin ventana emergente)",
+            ],
+            key="cloud__auth_method",
+            horizontal=True,
+        )
+        _cl_method = st.session_state["cloud__auth_method"]
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
         _cl_flow = st.session_state.get("cloud__auth_flow")
 
-        if _cl_flow is None:
-            # Paso 1 — botón para iniciar el flujo
+        # ── Método: Ventana de login (interactive) ────────────────────────────
+        if "Código" not in _cl_method:
             _cl_conn_col, _ = st.columns([3, 9])
             with _cl_conn_col:
                 if st.button(
@@ -152,58 +165,92 @@ if is_cloud():
                     key="cloud__btn_connect",
                     use_container_width=True,
                 ):
-                    try:
-                        _cl_flow = initiate_device_flow()
-                        st.session_state["cloud__auth_flow"] = _cl_flow
-                        st.rerun()
-                    except (RuntimeError, ImportError) as _cl_exc:
-                        st.error(str(_cl_exc))
-            st.caption(
-                "Se usará el método de código de dispositivo — "
-                "no abre ventanas emergentes."
-            )
-        else:
-            # Paso 2 — mostrar código y esperar confirmación
-            st.info(
-                f"**1.** Abre este enlace en tu navegador: "
-                f"[{_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')}]"
-                f"({_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')})\n\n"
-                f"**2.** Ingresa el código: `{_cl_flow.get('user_code', '—')}`\n\n"
-                "**3.** El código expira en 15 minutos."
-            )
-            _cl_done_col, _cl_cancel_col, _ = st.columns([2, 2, 8])
-            with _cl_done_col:
-                if st.button(
-                    "✅ Ya me autentiqué",
-                    type="primary",
-                    key="cloud__btn_done",
-                    use_container_width=True,
-                ):
-                    try:
-                        _cl_token = poll_device_flow(_cl_flow)
-                        if _cl_token is None:
-                            st.info(
-                                "⏳ Aún no detectamos tu autenticación — "
-                                "espera unos segundos e inténtalo de nuevo."
-                            )
-                        else:
-                            _cl_user = get_user_info(_cl_token)
-                            st.session_state["cloud__user_email"]     = _cl_user["email"]
-                            st.session_state["cloud__user_name"]      = _cl_user["name"]
-                            st.session_state["cloud__auth_flow"]      = None
-                            st.session_state["outlook__graph_token"]  = _cl_token
-                            st.session_state["outlook__graph_email"]  = _cl_user["email"]
+                    with st.spinner("Abriendo el navegador para autenticación…"):
+                        try:
+                            _cl_token = authenticate_interactive()
+                            _cl_user  = get_user_info(_cl_token)
+                            st.session_state["cloud__user_email"]    = _cl_user["email"]
+                            st.session_state["cloud__user_name"]     = _cl_user["name"]
+                            st.session_state["outlook__graph_token"] = _cl_token
+                            st.session_state["outlook__graph_email"] = _cl_user["email"]
                             st.rerun()
-                    except (RuntimeError, ImportError) as _cl_exc:
-                        st.error(str(_cl_exc))
-            with _cl_cancel_col:
-                if st.button(
-                    "✖ Cancelar",
-                    key="cloud__btn_cancel",
-                    use_container_width=True,
-                ):
-                    st.session_state["cloud__auth_flow"] = None
-                    st.rerun()
+                        except (RuntimeError, ImportError) as _cl_exc:
+                            _cl_err = str(_cl_exc)
+                            st.error(_cl_exc)
+                            if "código de dispositivo" in _cl_err.lower():
+                                st.info(
+                                    "💡 Prueba con el método de "
+                                    "**código de dispositivo**."
+                                )
+            st.caption(
+                "Se abrirá el navegador para iniciar sesión. Requiere que IT "
+                "registre la Redirect URI de esta app en Azure AD."
+            )
+
+        # ── Método: Código de dispositivo ────────────────────────────────────
+        else:
+            if _cl_flow is None:
+                # Paso 1 — iniciar flujo
+                _cl_conn_col, _ = st.columns([3, 9])
+                with _cl_conn_col:
+                    if st.button(
+                        "🔗 Conectar con Microsoft",
+                        type="primary",
+                        key="cloud__btn_connect",
+                        use_container_width=True,
+                    ):
+                        try:
+                            _cl_flow = initiate_device_flow()
+                            st.session_state["cloud__auth_flow"] = _cl_flow
+                            st.rerun()
+                        except (RuntimeError, ImportError) as _cl_exc:
+                            st.error(str(_cl_exc))
+                st.caption(
+                    "No abre ventanas emergentes — te dará un código para "
+                    "introducir en el navegador desde cualquier dispositivo."
+                )
+            else:
+                # Paso 2 — mostrar código y esperar confirmación
+                st.info(
+                    f"**1.** Abre este enlace en tu navegador: "
+                    f"[{_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')}]"
+                    f"({_cl_flow.get('verification_uri', 'https://microsoft.com/devicelogin')})\n\n"
+                    f"**2.** Ingresa el código: `{_cl_flow.get('user_code', '—')}`\n\n"
+                    "**3.** El código expira en 15 minutos."
+                )
+                _cl_done_col, _cl_cancel_col, _ = st.columns([2, 2, 8])
+                with _cl_done_col:
+                    if st.button(
+                        "✅ Ya me autentiqué",
+                        type="primary",
+                        key="cloud__btn_done",
+                        use_container_width=True,
+                    ):
+                        try:
+                            _cl_token = poll_device_flow(_cl_flow)
+                            if _cl_token is None:
+                                st.info(
+                                    "⏳ Aún no detectamos tu autenticación — "
+                                    "espera unos segundos e inténtalo de nuevo."
+                                )
+                            else:
+                                _cl_user = get_user_info(_cl_token)
+                                st.session_state["cloud__user_email"]    = _cl_user["email"]
+                                st.session_state["cloud__user_name"]     = _cl_user["name"]
+                                st.session_state["cloud__auth_flow"]     = None
+                                st.session_state["outlook__graph_token"] = _cl_token
+                                st.session_state["outlook__graph_email"] = _cl_user["email"]
+                                st.rerun()
+                        except (RuntimeError, ImportError) as _cl_exc:
+                            st.error(str(_cl_exc))
+                with _cl_cancel_col:
+                    if st.button(
+                        "✖ Cancelar",
+                        key="cloud__btn_cancel",
+                        use_container_width=True,
+                    ):
+                        st.session_state["cloud__auth_flow"] = None
+                        st.rerun()
 
         st.stop()
 
