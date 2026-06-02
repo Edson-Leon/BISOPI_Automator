@@ -128,13 +128,15 @@ En lugar de mantener dos bases de codigo o flags por funcion, una unica funcion 
 
 ---
 
-## Hallazgos conocidos de la API
+## Validaciones de la API
 
-| Hallazgo | Comportamiento | Manejo en la app |
+Las siguientes validaciones estan implementadas en el lado del servidor. La app las replica localmente en `validator.py` como pre-verificacion antes de enviar, lo que evita llamadas innecesarias a la API y proporciona mensajes de error mas inmediatos al usuario.
+
+| Validacion | Respuesta de la API | Pre-verificacion en la app |
 |---|---|---|
-| Proyecto inexistente devuelve 500 | Cuando `proyecto` no existe en BISOPI la API responde `500` en lugar de un `400` descriptivo. En revision por el equipo de BISOPI. | `uploader.py` captura todos los codigos que no sean 200/400/401 como error y muestra el codigo HTTP. La fila queda marcada en rojo. |
-| Semana cerrada no validada por la API | La API acepta registros de semanas ya cerradas (responde `200 OK` cuando deberia rechazarlos). Bug confirmado, pendiente de correccion. | `validator.py` calcula el cierre localmente (el lunes siguiente a la semana a las 12:30, desplazado al martes si es festivo colombiano) y agrega una advertencia en amarillo. La fila no se bloquea — si la API corrige esto en el futuro, la advertencia resulta inocua. |
-| Limite de 40h semanales no validado por la API | La API permite registrar mas de 40 horas laborales por semana sin error. Bug confirmado, pendiente de correccion. | `validator.py` acumula los minutos laborales por semana ISO en el batch y marca como error las filas que superen 2400 minutos antes de hacer cualquier llamada a la API. |
+| Proyecto inexistente | `400 Bad Request` con mensaje descriptivo indicando que el proyecto no existe | `validator.py` no pre-valida nombres de proyecto (requeriria catalogo en tiempo real); el error de la API se muestra directamente en la fila |
+| Semana cerrada | `400 Bad Request` indicando que la semana ya esta cerrada | `validator.py` calcula el cierre localmente (lunes siguiente a las 12:30, desplazado al martes si es festivo colombiano) y agrega advertencia amarilla antes del envio |
+| Limite de 40h laborales semanales | `400 Bad Request` al superar las 40 horas laborales en la semana | `validator.py` acumula minutos laborales por semana ISO y bloquea las filas que superen 2400 minutos antes de hacer cualquier llamada a la API |
 
 ---
 
