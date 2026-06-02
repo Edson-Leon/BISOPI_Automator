@@ -1,0 +1,30 @@
+# Credenciales — nunca versionar
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Archivos temporales y de sistema
+*.tmp
+*.temp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs generados por la app
+*.log
+
+# Datos locales (plantillas con información real)
+data/
