@@ -34,7 +34,7 @@ from modules.history        import (
     generate_download_bytes,
 )
 from modules.file_manager   import save_plantilla, check_writable
-from modules.outlook_parser import parse_ics, calculate_gaps, to_bisopi_df, export_to_template
+from modules.outlook_parser import parse_ics, calculate_gaps, to_bisopi_df, export_to_template, recalculate_estados
 
 # Submodo B — Microsoft Graph API (requiere: pip install msal requests)
 try:
@@ -1575,6 +1575,7 @@ Comentario: Notas adicionales
                             != _ol_old_edit[_ol_old_cols].astype(str).values.tolist()
                         )
 
+                    _ol_new_edit = recalculate_estados(_ol_new_edit)
                     st.session_state["outlook__df_edit"] = _ol_new_edit.reset_index(drop=True)
 
                     if _ol_changed:

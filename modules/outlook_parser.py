@@ -496,7 +496,58 @@ def to_bisopi_df(df: pd.DataFrame) -> pd.DataFrame:
     return df[REGISTRO_COLUMNS]   # preserva el índice original
 
 
-# ── Función 5: exportar a la plantilla Excel ──────────────────────────────────
+# ── Función 5: recalcular Estado tras edición del usuario ────────────────────
+
+def recalculate_estados(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Revisa fila por fila las filas editables (Estado distinto de '✅ Cargado'
+    y distinto de '❌ Error') y actualiza Estado:
+
+    - Si todos los campos obligatorios están completos → "Pendiente"
+    - Si falta alguno → "⚠ Incompleto"
+
+    Campos obligatorios base: Proyecto, GrupoTarea, Tarea, TipoHora,
+    FechaRegistro y (Horas > 0 o Minutos > 0).
+    Para TipoHora == "Adicional" también se requieren HoraInicio y Comentario.
+
+    Las filas con Estado "✅ Cargado" o "❌ Error" no se modifican.
+    """
+    df = df.copy()
+
+    _LOCKED = {"✅ Cargado", "❌ Error"}
+
+    for idx in df.index:
+        estado_actual = str(df.at[idx, "Estado"]).strip()
+        if estado_actual in _LOCKED:
+            continue
+
+        proyecto      = str(df.at[idx, "Proyecto"]).strip()
+        grupo_tarea   = str(df.at[idx, "GrupoTarea"]).strip()
+        tarea         = str(df.at[idx, "Tarea"]).strip()
+        tipo_hora     = str(df.at[idx, "TipoHora"]).strip()
+        fecha         = str(df.at[idx, "FechaRegistro"]).strip()
+        horas         = int(df.at[idx, "Horas"])   if pd.notna(df.at[idx, "Horas"])   else 0
+        minutos       = int(df.at[idx, "Minutos"]) if pd.notna(df.at[idx, "Minutos"]) else 0
+        hora_inicio   = str(df.at[idx, "HoraInicio"]).strip()
+        comentario    = str(df.at[idx, "Comentario"]).strip()
+
+        completo = (
+            bool(proyecto)
+            and bool(grupo_tarea)
+            and bool(tarea)
+            and bool(tipo_hora)
+            and bool(fecha)
+            and (horas > 0 or minutos > 0)
+        )
+        if completo and tipo_hora == "Adicional":
+            completo = bool(hora_inicio) and bool(comentario)
+
+        df.at[idx, "Estado"] = "Pendiente" if completo else "⚠ Incompleto"
+
+    return df
+
+
+# ── Función 6: exportar a la plantilla Excel ──────────────────────────────────
 
 def export_to_template(df: pd.DataFrame) -> bytes:
     """
