@@ -26,5 +26,6 @@ Thumbs.db
 # Logs generados por la app
 *.log
 
-# Datos locales (plantillas con información real)
-data/
+# Datos locales (plantillas con información real del usuario)
+data/*
+!data/Plantilla_BISOPI_Automator.xlsx
