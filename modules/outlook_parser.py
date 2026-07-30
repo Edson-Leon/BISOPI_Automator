@@ -574,10 +574,15 @@ def export_to_template(df: pd.DataFrame) -> bytes:
         _path = None
 
     if not _path or not os.path.isfile(_path):
-        raise ValueError(
-            "PLANTILLA_PATH no está configurada o el archivo no existe. "
-            "Configura PLANTILLA_PATH en tu archivo .env para usar esta función."
-        )
+        # Fallback: plantilla bundled en data/ (funciona en cloud y en local sin PLANTILLA_PATH)
+        _bundled = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "Plantilla_BISOPI_Automator.xlsx")
+        if not os.path.isfile(_bundled):
+            raise ValueError(
+                "No se encontró la plantilla base. "
+                "Configura PLANTILLA_PATH en tu archivo .env o verifica que "
+                "data/Plantilla_BISOPI_Automator.xlsx esté presente."
+            )
+        _path = _bundled
 
     wb = load_workbook(_path, keep_vba=False, data_only=False)
 

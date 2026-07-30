@@ -1588,40 +1588,34 @@ Comentario: Notas adicionales
 
                     # ── Columna izquierda: Exportar a plantilla Excel ─────────
                     with _ol_col_export:
-                        if not PLANTILLA_PATH:
-                            st.warning(
-                                "Configura `PLANTILLA_PATH` en tu `.env` "
-                                "para usar esta función."
+                        try:
+                            _ol_exp_bytes = export_to_template(
+                                to_bisopi_df(st.session_state["outlook__df_edit"])
                             )
-                        else:
-                            try:
-                                _ol_exp_bytes = export_to_template(
-                                    to_bisopi_df(st.session_state["outlook__df_edit"])
-                                )
-                                st.download_button(
-                                    label="📥 Exportar a plantilla Excel",
-                                    data=_ol_exp_bytes,
-                                    file_name="BISOPI_Outlook_Export.xlsx",
-                                    mime=(
-                                        "application/vnd.openxmlformats-"
-                                        "officedocument.spreadsheetml.sheet"
-                                    ),
-                                    use_container_width=True,
-                                    help=(
-                                        "Exporta los eventos a la plantilla Excel "
-                                        "para completar campos faltantes."
-                                    ),
-                                )
-                                st.caption(
-                                    "💡 Abre el archivo, completa los campos "
-                                    "resaltados en amarillo (Proyecto, Grupo Tarea, "
-                                    "Tarea, Tipo Hora) y cárgalo en la pestaña "
-                                    "**Archivo plano**."
-                                )
-                            except ValueError as _exc:
-                                st.warning(str(_exc))
-                            except Exception as _exc:
-                                st.error(f"Error al generar el archivo: {_exc}")
+                            st.download_button(
+                                label="📥 Exportar a plantilla Excel",
+                                data=_ol_exp_bytes,
+                                file_name="BISOPI_Outlook_Export.xlsx",
+                                mime=(
+                                    "application/vnd.openxmlformats-"
+                                    "officedocument.spreadsheetml.sheet"
+                                ),
+                                use_container_width=True,
+                                help=(
+                                    "Exporta los eventos a la plantilla Excel "
+                                    "para completar campos faltantes."
+                                ),
+                            )
+                            st.caption(
+                                "💡 Abre el archivo, completa los campos "
+                                "resaltados en amarillo (Proyecto, Grupo Tarea, "
+                                "Tarea, Tipo Hora) y cárgalo en la pestaña "
+                                "**Archivo plano**."
+                            )
+                        except ValueError as _exc:
+                            st.warning(str(_exc))
+                        except Exception as _exc:
+                            st.error(f"Error al generar el archivo: {_exc}")
 
                     # ── Columna derecha: Subir a BISOPI ───────────────────────
                     with _ol_col_upload:
