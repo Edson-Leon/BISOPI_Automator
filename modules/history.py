@@ -21,6 +21,7 @@ Funciones públicas:
 from __future__ import annotations
 
 import io
+from copy import copy
 from datetime import datetime
 
 import pandas as pd
@@ -84,6 +85,76 @@ def _find_col(ws, header_row: int, name: str) -> int | None:
     return None
 
 
+def _merged_rows_below(ws, row: int) -> set[int]:
+    """
+    Devuelve las filas (1-based) ocupadas por rangos combinados situados por
+    debajo de `row`.
+
+    La plantilla trae una nota de pie combinada (A:M) al final de la hoja
+    Histórico.  Esa fila es decoración, no un registro: hay que excluirla al
+    buscar el final de los datos y al construir las claves de deduplicación.
+    """
+    rows: set[int] = set()
+    for rng in ws.merged_cells.ranges:
+        if rng.min_row > row:
+            rows.update(range(rng.min_row, rng.max_row + 1))
+    return rows
+
+
+def _relocate_footer(ws, header_row: int, start_row: int, n_rows: int) -> None:
+    """
+    Desplaza la nota de pie combinada para dejar sitio a `n_rows` registros
+    nuevos a partir de `start_row`.
+
+    Sin esto, al llegar la escritura a la fila del pie openpyxl levanta
+    AttributeError: las celdas de un rango combinado distintas del ancla son
+    objetos MergedCell y su atributo `value` es de solo lectura.
+
+    Secuencia por cada rango combinado bajo el encabezado:
+      1. guarda texto y formato del ancla,
+      2. desagrupa el rango (las celdas vuelven a ser escribibles),
+      3. limpia esas celdas y les copia el formato de una fila de datos,
+      4. reconstruye el pie justo debajo de la última fila que se escribirá.
+
+    Los rangos en el encabezado o por encima (el título de la fila 1) no se
+    tocan.  El pie queda siempre pegado al último registro: si había filas
+    libres de sobra, se aprovechan.
+    """
+    dest      = start_row + n_rows
+    style_src = start_row - 1 if start_row - 1 > header_row else start_row
+
+    for rng in list(ws.merged_cells.ranges):
+        if rng.min_row <= header_row:
+            continue
+
+        old_row = rng.min_row
+        anchor  = ws.cell(row=old_row, column=rng.min_col)
+        texto   = anchor.value
+        fuente  = copy(anchor.font)
+        alineac = copy(anchor.alignment)
+        c_ini, c_fin = rng.min_col, rng.max_col
+
+        ws.unmerge_cells(str(rng))
+
+        for c in range(c_ini, c_fin + 1):
+            celda = ws.cell(row=old_row, column=c)
+            plant = ws.cell(row=style_src, column=c)
+            celda.value     = None
+            celda.font      = copy(plant.font)
+            celda.alignment = copy(plant.alignment)
+            celda.fill      = copy(plant.fill)
+            celda.border    = copy(plant.border)
+
+        nueva = ws.cell(row=dest, column=c_ini)
+        nueva.value     = texto
+        nueva.font      = fuente
+        nueva.alignment = alineac
+        ws.merge_cells(
+            start_row=dest, start_column=c_ini,
+            end_row=dest,   end_column=c_fin,
+        )
+
+
 def _find_header_row_hist(ws) -> int:
     """
     Devuelve la fila (1-based) donde col A == "Proyecto" en la hoja Histórico
@@ -140,9 +211,12 @@ def _last_data_row(ws) -> int:
     """
     max_r      = ws.max_row or 0
     header_row = _find_header_row_hist(ws)
+    combinadas = _merged_rows_below(ws, header_row)
 
-    # Primera fila vacía en col A después del encabezado
+    # Primera fila vacía —o de pie combinado— en col A después del encabezado
     for r in range(header_row + 1, max_r + 2):
+        if r in combinadas:
+            return r - 1   # la nota de pie no es un dato
         val = ws.cell(row=r, column=1).value
         if val is None or (isinstance(val, str) and val.strip() == ""):
             return r - 1   # la fila anterior es la última con dato real
@@ -181,8 +255,11 @@ def _build_existing_keys(ws) -> set[tuple[str, str, str, str]]:
         return set()
 
     keys: set[tuple] = set()
-    max_r = ws.max_row or 0
+    max_r      = ws.max_row or 0
+    combinadas = _merged_rows_below(ws, header_row)
     for r in range(header_row + 1, max_r + 1):
+        if r in combinadas:
+            continue   # nota de pie: no es un registro
         proy = ws.cell(r, c_proy).value
         # Ignorar filas completamente vacías (solo formato o nota de pie)
         if proy is None or _cell_str(proy) == "":
@@ -268,7 +345,14 @@ def append_historico(wb: Workbook, df: pd.DataFrame) -> None:
             # anti-duplicado aplica solo contra entradas ya persistidas en el sheet.
 
     if new_rows:
-        _write_rows(ws, new_rows, after_row=_last_data_row(ws))
+        start_row = _last_data_row(ws) + 1
+        _relocate_footer(
+            ws,
+            header_row=_find_header_row_hist(ws),
+            start_row=start_row,
+            n_rows=len(new_rows),
+        )
+        _write_rows(ws, new_rows, after_row=start_row - 1)
 
 
 # ── Función 3: eliminar filas cargadas de la hoja Registro ───────────────────
