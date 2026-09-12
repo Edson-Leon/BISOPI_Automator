@@ -282,6 +282,9 @@ def update_registro(wb: Workbook, df: pd.DataFrame) -> None:
     'Estado' y 'Respuesta API' fila a fila por posición
     (df.iloc[0] ↔ Excel fila 3, df.iloc[1] ↔ Excel fila 4, …).
 
+    Se detiene al llegar a la banda combinada que cierra la hoja: esa fila
+    no admite escritura y marca el final de la región de datos.
+
     No modifica ninguna otra celda ni formato.
     No guarda el workbook — el caller llama a save_plantilla.
     """
@@ -296,12 +299,29 @@ def update_registro(wb: Workbook, df: pd.DataFrame) -> None:
     if col_estado is None or col_respuesta is None:
         return
 
+    # La plantilla cierra la hoja con una banda combinada (A:L).  Sus celdas
+    # distintas del ancla son MergedCell y no admiten escritura, así que esa
+    # fila marca el final de la región de datos: escribir ahí reventaría con
+    # AttributeError, y además el registro correspondiente no existe en la
+    # hoja (quedaría un Estado huérfano sin Proyecto ni Tarea al lado).
+    combinadas = _merged_rows_below(ws, _REGISTRO_HEADER_ROW)
+
+    escritas = 0
     for i, (_, row) in enumerate(df.iterrows()):
         excel_row = _REGISTRO_DATA_START + i
-        if excel_row > ws.max_row:
+        if excel_row > ws.max_row or excel_row in combinadas:
             break
         ws.cell(row=excel_row, column=col_estado).value    = str(row.get("Estado",       ""))
         ws.cell(row=excel_row, column=col_respuesta).value = str(row.get("RespuestaAPI", ""))
+        escritas += 1
+
+    if escritas < len(df):
+        print(
+            f"update_registro: la hoja Registro admite {escritas} filas y se "
+            f"recibieron {len(df)}.  El Estado de las {len(df) - escritas} "
+            f"restantes no se escribió en el Excel.  La carga a la API y el "
+            f"Histórico no se ven afectados."
+        )
 
 
 # ── Función 2: añadir filas al Histórico (con deduplicación) ──────────────────
